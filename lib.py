@@ -154,12 +154,12 @@ class Objects:
 class Actions:
     def __init__(self, game):
         self.actions = []
-        self.stops = ['in', 'on', 'the', 'with']
+        self.stops = ['in', 'on', 'the', 'with', 'to']
         self.reactions = {}
         self.game = game
 
     def action(self, name, *aliases):
-        if type(aliases[-1]) != str:
+        if aliases and type(aliases[-1]) != str:
             self.reactions[name] = aliases[-1]
             aliases = aliases[:-1]
         self.actions.append(list(map(str.split, [name] + list(aliases))))
@@ -411,9 +411,9 @@ class Game:
                 failed = True
                 print('Use %s on what?' % source_object)
             else:
-                if source_object.name not in self.character.inventory:
+                if source_object.name not in self.character.inventory and target_object.name not in self.character.inventory:
                     failed = True
-                    print('You don\'t have a %s' % source_object)
+                    print('You don\'t have that')
                 else:
                     message = 'You use the %s on the %s' % (source_object, target_object)
                     if reaction_result:
@@ -455,7 +455,7 @@ class Game:
                 failed = True
         elif action == 'inventory':
             if self.character.inventory:
-                self.print('You have ' + ', '.join(map(lambda x: 'a ' + x, self.character.inventory)) + '.')
+                self.print('You have:\n\t' + '\n\t'.join(map(lambda x: ('a ' + x).title(), self.character.inventory)))
             else:
                 self.print('Your inventory is empty.')
         elif not notified:

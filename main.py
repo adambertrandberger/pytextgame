@@ -22,11 +22,13 @@ game.configure_actions() \
     .action('use', 'u') \
     .action('eat', 'consume') \
     .action('drop', 'd') \
+    .action('talk') \
     .action('destroy', 'break', progn(side_effects.destroy(), succeed()))
 
 game.configure_objects() \
     .object('key', 'A dirty, dirty key', ['look', 'take', 'use']) \
     .object('towel', 'A stained towel.', ['look', 'take', 'drop']) \
+    .object('crab', 'A bright red crab.', ['talk', 'look']) \
     .object('car', 'A big red van', ['look']) \
     .on('key', 'eat', cond(
          predicates.has_visited('bathroom'),
@@ -34,6 +36,8 @@ game.configure_objects() \
               side_effects.remove_from_inventory(),
               succeed('Yum')),
          fail())) \
+    .on('crab', 'talk', succeed('Welcome home, son!')) \
+    .on_use('crab', 'towel', succeed('Mmm, thanks! I needed that.')) \
     .on_use('key', 'towel', progn(side_effects.add_to_inventory('taco'), succeed('Nice!'))) \
     .on('car', 'take', cond(predicates.inventory_has('forklift'),
                             succeed('You use your forklift to take the car'),
@@ -51,7 +55,9 @@ game.configure_rooms() \
 
     ]) \
     .room('living room', 'Smells clean!', [
-         'key'
+         'key',
+         'crab'
+         
     ]) \
     .map('basement', 'upstairs', 'bathroom', bidirectional=False) \
     .map('living room', 'west', 'bathroom')
