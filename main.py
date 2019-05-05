@@ -1,42 +1,41 @@
 from lib import *
 
-dirs = Directions()
-dirs.add('east', 'e')
-dirs.add('west', 'w')
-dirs.add('north', 'n')
-dirs.add('south', 's')
-dirs.add('up', 'upstairs')
-dirs.add('down', 'downstairs')
-dirs.add_opposite('east', 'west')
-dirs.add_opposite('north', 'south')
-dirs.add_opposite('up', 'down')
+game = Game()
+game.configure_directions() \
+    .direction('east', 'e') \
+    .direction('west', 'w') \
+    .direction('north', 'n') \
+    .direction('south', 's') \
+    .direction('up', 'upstairs') \
+    .opposite('down', 'downstairs') \
+    .opposite('east', 'west') \
+    .opposite('north', 'south') \
+    .opposite('up', 'down')
 
-acts = Actions()
-acts.add_skip_words('at', 'on', 'the')
-acts.add('look', 'check out', 'inspect')
-acts.add('take', 'pick up')
-acts.add('go', 'walk')
-acts.add('drop')
+game.configure_actions() \
+    .skip_words('at', 'on', 'the') \
+    .action('look', 'check out', 'inspect') \
+    .action('take', 'pick up') \
+    .action('go', 'walk') \
+    .action('drop')
 
-objs = Objects()
-objs.add('bathroom key', 'A dirty, dirty key', ['look', 'take'])
-objs.add('towel', 'A stained towel.', ['look', 'take'])
+game.configure_objects() \
+    .object('bathroom key', 'A dirty, dirty key', ['look', 'take']) \
+    .object('towel', 'A stained towel.', ['look', 'take'])
 
-rooms = Rooms()
-rooms.add('bathroom', 'A well kept bathroom', [
-    'towel'
-])
-rooms.add('basement', 'A dark, creepy room', [
-    'bathroom key'
-])
-rooms.add('living room', 'Smells clean', [])
+game.configure_rooms() \
+    .room('bathroom', 'A well kept bathroom', [
+        'towel'
+    ]) \
+    .room('basement', 'A dark, creepy room', [
+        'bathroom key'
+    ]) \
+    .room('living room', 'Smells clean', []) \
+    .map('basement', 'upstairs', 'bathroom', bidirectional=False) \
+    .map('living room', 'west', 'bathroom')
 
-rooms.map('basement', 'upstairs', 'bathroom', bidirectional=False)
-rooms.map('living room', 'west', 'bathroom')
-
-char = Character('living room')
-
-game = Game(char, rooms, objs, acts, dirs)
+game.configure_character() \
+    .starting_room('living room')
 
 if __name__ == '__main__':
      while True:
