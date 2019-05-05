@@ -22,8 +22,8 @@ game.configure_actions() \
     .action('use', 'u') \
     .action('eat', 'consume') \
     .action('drop', 'd') \
-    .action('talk') \
-    .action('destroy', 'break', progn(side_effects.destroy(), succeed()))
+    .action('talk')
+#    .action('destroy', 'break', progn(side_effects.destroy(), succeed()))
 
 game.configure_objects() \
     .object('key', 'A dirty, dirty key', ['look', 'take', 'use']) \

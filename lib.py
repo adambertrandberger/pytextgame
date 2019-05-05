@@ -385,7 +385,7 @@ class Game:
 
         if tokens:
             failed = True
-            self.print('I don\'t understand')
+            self.print('I don\'t understand.')
         elif reaction_result and not reaction_result.succeed:
             # for interrupting normal actions
             pass
@@ -460,7 +460,7 @@ class Game:
                 self.print('Your inventory is empty.')
         elif not notified:
             failed = True
-            self.print('I don\'t understand')
+            self.print('I don\'t understand.')
 
         if reaction_result:
             if not failed and reaction_result and reaction_result.message:
