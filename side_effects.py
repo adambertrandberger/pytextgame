@@ -3,7 +3,7 @@ class SideEffect:
         self.name = name
         self.args = args
 
-def add_to_inventory(object):
+def add_to_inventory(object=None):
     return SideEffect('add_to_inventory', object)
 
 def remove_from_inventory(object):

@@ -15,10 +15,8 @@ class Character:
     def add_to_inventory(self, object, force=False):
         if force or self.inventory_limit == None or len(self.inventory) + 1 <= self.inventory_limit:
             self.inventory.append(object)
-            print('You pick up the %s.' % object)
             return True
         else:
-            print('Your inventory is out of room.')
             return False
 
     def inventory_size(self, size):
@@ -118,7 +116,7 @@ class Objects:
         if action_name == 'use' and source_object and target_object:
             use_key = source_object.name + target_object.name            
             if use_key in self.use_callbacks:
-                result = self.game.exec_reaction(self.use_callbacks[use_key])
+                result = self.game.exec_reaction(self.use_callbacks[use_key], source_object, target_object)
                 notified = True
                 
         for object in objects:
@@ -126,7 +124,7 @@ class Objects:
                 continue
             
             if action_name in object.callbacks:
-                result = self.game.exec_reaction(object.callbacks[action_name])
+                result = self.game.exec_reaction(object.callbacks[action_name], source_object, target_object)
                 notified = True
                 break;
 
@@ -153,11 +151,21 @@ class Actions:
     def __init__(self, game):
         self.actions = []
         self.stops = ['in', 'on', 'the', 'with']
+        self.reactions = {}
         self.game = game
 
     def action(self, name, *aliases):
+        if type(aliases[-1]) != str:
+            self.reactions[name] = aliases[-1]
+            aliases = aliases[:-1]
         self.actions.append(list(map(str.split, [name] + list(aliases))))
         return self
+
+    def on(self, name, reaction):
+        self.reactions[name] = reaction
+
+    def has_reaction(self, name):
+        return name in self.reactions
 
     def stop_words(self, *words):
         self.stops = words
@@ -276,16 +284,25 @@ class Game:
     def configure_actions(self):
         return self.actions
 
-    def exec_reaction(self, reaction):
+    def exec_reaction(self, reaction, source_object=None, target_object=None):
         preds = {
             'inventory_has': lambda object: object in self.character.inventory,
             'in_room': lambda room: room == self.character.room,
             'has_visited': lambda room: room in self.visited_rooms
         }
 
+        source = None if not source_object else source_object.name
+        target = None if not target_object else target_object.name
+
+        def default_to_source(input):
+            if input == None:
+                return source
+            else:
+                return input
+            
         side_effects = {
-            'add_to_inventory': lambda object: self.character.add_to_inventory(object, force=True),
-            'remove_from_inventory': lambda object: self.character.inventory.remove(object)
+            'add_to_inventory': lambda obj: self.character.add_to_inventory(default_to_source(obj), force=True),
+            'remove_from_inventory': lambda obj: self.character.inventory.remove(default_to_source(obj))
         }
         
         if type(reaction) == Cond:
@@ -295,9 +312,9 @@ class Game:
             else:
                 raise Exception('Unknown condition')
             if was_true:
-                return self.exec_reaction(reaction.then_part)
+                return self.exec_reaction(reaction.then_part, source_object, target_object)
             else:
-                return self.exec_reaction(reaction.else_part)
+                return self.exec_reaction(reaction.else_part, source_object, target_object)
         if type(reaction) == SideEffect:
             if reaction.name not in side_effects:
                 raise Exception('Unknown side effect %s' % reaction.name)
@@ -305,7 +322,7 @@ class Game:
         elif type(reaction) == Progn:
             last_result = None
             for statement in reaction.statements:
-                last_result = self.exec_reaction(statement)
+                last_result = self.exec_reaction(statement, source_object, target_object)
             return last_result
         elif type(reaction) == Result:
             return reaction
@@ -379,16 +396,25 @@ class Game:
                 self.silence = reaction_result.silence                
             elif not reaction_result.succeed:
                 return
-            
-        # still allow for callbacks if it doesn't have the action
-        if not notified and source_object and action not in source_object.actions:
-            self.print('You can\'t %s at that.' % action)
-            return
-        
+
         if tokens:
             self.print('I don\'t understand')
-        elif fail:
-            self.print('That didn\'t work.')
+        elif reaction_result and not reaction_result.succeed:
+            if not reaction_result.message:
+                self.print('That didn\'t work.')
+            else:
+                self.print(reaction_result.message)
+        elif self.actions.has_reaction(action): # if the action has a custom reaction
+            result = self.exec_reaction(self.actions.reactions[action], source_object, target_object)
+            if result:
+                if result.message:
+                    self.print(result.message)
+                if not result.succeed and not result.message:
+                    self.print('That didn\'t work.')
+        # still allow for callbacks if it doesn't have the action
+        elif not notified and source_object and action not in source_object.actions:
+            self.print('You can\'t %s at that.' % action)
+            return
         elif action == 'use':
             if not source_object:
                 print('Use what?')                
@@ -415,7 +441,10 @@ class Game:
                 self.print('Take what?')
             elif source_object.name in room.objects:
                 if self.character.add_to_inventory(source_object.name):
+                    print('You pick up the %s.' % source_object)
                     room.objects.remove(source_object.name)
+                else:
+                    print('Your inventory is out of room.')
             else:
                 self.print('There is no %s in here.' % source_object)
         elif action == 'drop':
