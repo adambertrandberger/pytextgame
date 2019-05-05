@@ -7,7 +7,7 @@ game.configure_directions() \
     .direction('north', 'n') \
     .direction('south', 's') \
     .direction('up', 'upstairs') \
-    .opposite('down', 'downstairs') \
+    .direction('down', 'downstairs') \
     .opposite('east', 'west') \
     .opposite('north', 'south') \
     .opposite('up', 'down')
