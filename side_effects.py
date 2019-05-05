@@ -37,7 +37,13 @@ class Destroy(SideEffect):
         if object in room.objects:
             game.rooms.get(game.character.room).objects.remove(object)
 
-        
+class ChangeDescription(SideEffect):
+    def execute(self, game, object_name, new_description):
+        for object in game.objects.objects:
+            if object.name == object_name:
+                object.description = new_description
+                break;
+            
 def add_to_inventory(object=None):
     return AddToInventory(object)
 
@@ -46,3 +52,6 @@ def remove_from_inventory(object=None):
 
 def destroy(object=None):
     return Destroy(object)
+
+def change_description(object, new_description):
+    return ChangeDescription(object, new_description)

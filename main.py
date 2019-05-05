@@ -29,7 +29,7 @@ game.configure_objects() \
     .object('key', 'A dirty, dirty key', ['look', 'take', 'use']) \
     .object('towel', 'A stained towel.', ['look', 'take', 'drop']) \
     .object('crab', 'A bright red crab.', ['talk', 'look']) \
-    .object('car', 'A big red van', ['look']) \
+    .object('car', 'A shiny red van', ['look']) \
     .on('key', 'eat', cond(
          predicates.has_visited('bathroom'),
          progn(
@@ -39,6 +39,8 @@ game.configure_objects() \
     .on('crab', 'talk', succeed('Welcome home, son!')) \
     .on_use('crab', 'towel', succeed('Mmm, thanks! I needed that.')) \
     .on_use('key', 'towel', progn(side_effects.add_to_inventory('taco'), succeed('Nice!'))) \
+    .on_use('towel', 'car', progn(side_effects.change_description('car', 'A dirty red van'),
+                                  succeed('You wipe the dirty towel on the car'))) \
     .on('car', 'take', cond(predicates.inventory_has('forklift'),
                             succeed('You use your forklift to take the car'),
                             fail('You try to stuff the car into your inventory, but it\'s too heavy.'))) \
