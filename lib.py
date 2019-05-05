@@ -362,6 +362,25 @@ class Game:
             
             self.silence = False
 
+    def is_in_room_or_inv(self, source_object, target_object):
+        room = self.rooms.get(self.character.room)
+
+        source_not_found = False
+        if source_object != None:
+            source_not_found = source_object.name not in room.objects and source_object.name not in self.character.inventory
+
+
+        target_not_found = False            
+        if target_object != None:
+            target_not_found = target_object.name not in room.objects and target_object.name not in self.character.inventory
+
+        
+        not_found = source_object if source_not_found else target_object
+        if source_not_found or target_not_found:
+            self.print('I don\'t see a %s anywhere.' % not_found)
+            return False
+        return True
+
     def execute(self, string):
         self.silence = False
         failed = False
@@ -381,7 +400,11 @@ class Game:
         
         direction = self.directions.eat(tokens)
 
-        notified, reaction_result = self.objects.notify(action, source_object, target_object)
+        notified, reaction_result = (False, None)
+        if self.is_in_room_or_inv(source_object, target_object):
+            notified, reaction_result = self.objects.notify(action, source_object, target_object)
+        else:
+            return
 
         if tokens:
             failed = True
@@ -397,9 +420,7 @@ class Game:
                     self.print('That didn\'t work.')
         # still allow for callbacks if it doesn't have the action
         elif not notified and source_object and action not in source_object.actions:
-            if source_object.name not in self.rooms.get(self.character.room).objects and source_object.name not in self.character.inventory:
-                self.print('I don\'t see a %s anywhere.' % source_object)
-            else:
+            if self.is_in_room_or_inv(source_object, target_object):
                 self.print('You can\'t %s that.' % action)
                 
             failed = True
@@ -421,7 +442,8 @@ class Game:
                             failed = True
                             print('That didn\'t work.')
                     else:
-                        print('Nothing happens.')
+                        if self.is_in_room_or_inv(source_object, target_object):
+                            print('Nothing happens.')
         elif action == self.go_action_name:
             if not direction:
                 failed = True
