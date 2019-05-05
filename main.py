@@ -1,4 +1,6 @@
 from lib import *
+import side_effects
+import predicates
 
 inv = []
 
@@ -19,16 +21,24 @@ game.configure_actions() \
     .action('take', 't', 'pick up') \
     .action('inventory', 'inv', 'i') \
     .action('go', 'g', 'walk') \
-    .action('drop') \
-    #    .on('take', lambda state: inv.append(state.object))
+    .action('use', 'u') \
+    .action('eat', 'consume') \
+    .action('drop', 'd')
+#    .on('take', lambda state: inv.append(state.object))
 
 game.configure_objects() \
-    .object('bathroom key', 'A dirty, dirty key', ['look', 'take']) \
-    .object('towel', 'A stained towel.', ['look', 'take']) \
+    .object('key', 'A dirty, dirty key', ['look', 'take', 'use']) \
+    .object('towel', 'A stained towel.', ['look', 'take', 'drop']) \
     .object('car', 'A big red van', ['look']) \
-    .on('car', 'take', game.cond(game.inventory_has('forklift'),
-                                 game.succeed('You use your forklift to take the car'),
-                                 game.fail('You try to stuff the car into your inventory, but it\'s too heavy.')))
+    .on('key', 'eat', cond(predicates.has_visited('bathroom'), progn(side_effects.remove_from_inventory('key'), succeed('Yum')), fail())) \
+    .on_use('key', 'car', progn(side_effects.add_to_inventory('banana'))) \
+    .on('car', 'take', cond(predicates.inventory_has('forklift'),
+                            succeed('You use your forklift to take the car'),
+                            fail('You try to stuff the car into your inventory, but it\'s too heavy.'))) \
+    .on('towel', 'drop', cond(predicates.in_room('living room'),
+                              fail('You can\'t drop that in the living room'),
+                              succeed()))
+
 
 game.configure_rooms() \
     .room('bathroom', 'A well kept bathroom.', [
@@ -36,16 +46,20 @@ game.configure_rooms() \
          'car'
     ]) \
     .room('basement', 'A dark, creepy room.', [
-         'bathroom key'
+
     ]) \
-    .room('living room', 'Smells clean!', []) \
+    .room('living room', 'Smells clean!', [
+         'key'
+    ]) \
     .map('basement', 'upstairs', 'bathroom', bidirectional=False) \
     .map('living room', 'west', 'bathroom')
 
 game.configure_character() \
     .starting_room('living room') \
-    .on_exit('living room', lambda: print("HAHAHA"))
-
+    .on_exit('living room', cond(
+         predicates.inventory_has('key'),
+         succeed(),
+         fail('You need the key')))
 
 if __name__ == '__main__':
      while True:

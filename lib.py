@@ -1,25 +1,60 @@
 import re
 
+from side_effects import SideEffect
+from predicates import Predicate
+
 class Character:
     def __init__(self, game):
         self.inventory = []
         self.action_callbacks = {}
         self.room_enter_callbacks = {}
-        self.room_exit_callbacks = {}        
+        self.room_exit_callbacks = {}
+        self.inventory_limit = None
         self.game = game
 
+    def add_to_inventory(self, object, force=False):
+        if force or self.inventory_limit == None or len(self.inventory) + 1 <= self.inventory_limit:
+            self.inventory.append(object)
+            print('You pick up the %s.' % object)
+            return True
+        else:
+            print('Your inventory is out of room.')
+            return False
+
+    def inventory_size(self, size):
+        self.inventory_limit = size
+        return self
+    
     def starting_room(self, room):
         self.room = room
         return self
 
     def on(self, action_name, reaction):
         self.action_callbacks[action_name] = reaction
+        return self
 
     def on_exit(self, room_name, reaction):
         self.room_exit_callbacks[room_name] = reaction
 
     def on_enter(self, room_name, reaction):
         self.room_enter_callbacks[room_name] = reaction
+
+    def on_enter_from(self, from_room, to_room, reaction):
+        '''
+        on_enter_from(living room, bathroom, succeed())
+
+        Fires when you are entering from living room to the bathroom
+        '''
+        self.room_enter_from_callbacks[from_room + to_room] = reaction
+
+    def on_exit_to(self, from_room, to_room, reaction):
+        '''
+        on_exit_to(living room, bathroom, succeed())
+
+        Fire when you are exiting from the living room to the bathroom
+        '''
+        self.room_exit_to_callbacks[from_room + to_room] = reaction
+        
 
 class Object:
     def __init__(self, name, description, actions):
@@ -36,6 +71,7 @@ class Object:
     
     def on(self, action_name, reaction):
         self.callbacks[action_name] = reaction
+        return self
 
 # matches should be list of list (list of tokens
 # [['this'], ['this', 'or', 'that']]
@@ -64,23 +100,37 @@ class Objects:
     def __init__(self, game):
         self.objects = []
         self.game = game
-        
+        self.use_callbacks = {}
+
+    def on_use(self, source, target, reaction):
+        self.use_callbacks[source + target] = reaction
+        return self
+    
     def object(self, name, description, actions):
         self.objects.append(Object(name, description, actions))
         return self
 
-    def notify(self, action_name, *objects):
-        succeed = True
+    def notify(self, action_name, source_object, target_object):
+        result = None
         notified = False
+        objects = [source_object, target_object]
+
+        if action_name == 'use' and source_object and target_object:
+            use_key = source_object.name + target_object.name            
+            if use_key in self.use_callbacks:
+                result = self.game.exec_reaction(self.use_callbacks[use_key])
+                notified = True
+                
         for object in objects:
             if not object:
                 continue
             
             if action_name in object.callbacks:
-                succeed = object.callbacks[action_name]()
+                result = self.game.exec_reaction(object.callbacks[action_name])
                 notified = True
                 break;
-        return (notified, succeed)
+
+        return (notified, result)
 
     def get(self, name):
         matches = list(filter(lambda x: x.name == name, self.objects))
@@ -97,11 +147,12 @@ class Objects:
 
     def on(self, object_name, action_name, reaction):
         self.get(object_name).on(action_name, reaction)
+        return self
 
 class Actions:
     def __init__(self, game):
         self.actions = []
-        self.stops = ['in', 'on', 'the']
+        self.stops = ['in', 'on', 'the', 'with']
         self.game = game
 
     def action(self, name, *aliases):
@@ -142,6 +193,45 @@ class Actions:
             if name in action:
                 return ' '.join(action[0])
 
+class Result:
+    def __init__(self, succeed=True, message='', silence=True, side_effect=None):
+        self.succeed = succeed
+        self.message = message
+        self.silence = silence
+        self.side_effect = side_effect
+
+class Cond:
+    def __init__(self, condition, then_part, else_part):
+        self.condition = condition
+        self.then_part = then_part
+        self.else_part = else_part
+
+class Progn:
+    def __init__(self, statements):
+        self.statements = statements
+
+def cond(predicate, then_part, else_part):
+    return Cond(predicate, then_part, else_part)
+
+def progn(*statements):
+    return Progn(statements)
+
+def fail(message='', silence=True):
+    '''
+    Don't continue the action and print the message to the screen
+    '''
+    return Result(False, message=message, silence=silence)
+
+def info(message='', silence=False):
+    return Result(True, message, silence)
+
+def succeed(message='', silence=True):
+    '''        
+    Continue with the action and print the message to the screen
+    '''
+    return Result(True, message, silence)
+
+            
 class Game:
     def __init__(self):
         self.rooms = Rooms(self)
@@ -152,7 +242,11 @@ class Game:
         
         self.go_action_name = 'go'
         self.look_action_name = 'look'
-        self.take_action_name = 'take'        
+        self.take_action_name = 'take'
+
+        self.visited_rooms = set()
+
+        self.silence = False
 
     def set_go_action_name(self, action_name):
         self.go_action_name = action_name
@@ -162,6 +256,10 @@ class Game:
 
     def set_take_action_name(self, action_name):
         self.take_action_name = action_name
+
+    def print(self, *message):
+        if not self.silence:
+            print(*message)
 
     def configure_directions(self):
         return self.directions
@@ -178,58 +276,84 @@ class Game:
     def configure_actions(self):
         return self.actions
 
-    def inventory_has(self, object):
-        def func():
-            return len(list(filter(lambda x: x == object, self.character.inventory))) > 0
-        return func
+    def exec_reaction(self, reaction):
+        preds = {
+            'inventory_has': lambda object: object in self.character.inventory,
+            'in_room': lambda room: room == self.character.room,
+            'has_visited': lambda room: room in self.visited_rooms
+        }
 
-    def cond(self, predicate, then_part, else_part):
-        def func():
-            if predicate():
-                then_part()
+        side_effects = {
+            'add_to_inventory': lambda object: self.character.add_to_inventory(object, force=True),
+            'remove_from_inventory': lambda object: self.character.inventory.remove(object)
+        }
+        
+        if type(reaction) == Cond:
+            was_true = False
+            if type(reaction.condition) == Predicate:
+                was_true = preds[reaction.condition.name](*reaction.condition.args)
             else:
-                else_part()
+                raise Exception('Unknown condition')
+            if was_true:
+                return self.exec_reaction(reaction.then_part)
+            else:
+                return self.exec_reaction(reaction.else_part)
+        if type(reaction) == SideEffect:
+            if reaction.name not in side_effects:
+                raise Exception('Unknown side effect %s' % reaction.name)
+            side_effects[reaction.name](*reaction.args)
+        elif type(reaction) == Progn:
+            last_result = None
+            for statement in reaction.statements:
+                last_result = self.exec_reaction(statement)
+            return last_result
+        elif type(reaction) == Result:
+            return reaction
+
+    def in_room(self, room_name):
+        def func():
+            return self.character.room == room_name
         return func
 
-    def fail(self, message):
-        '''
-        Don't continue the action and print the message to the screen
-        '''
-        def func():
-            print(message)
-            return False
-        return func
-
-    def succeed(self, message):
-        '''        
-        Continue with the action and print the message to the screen
-        '''
-        def func():
-            print(message)
-            return False
-        return func
-    
     def go(self, direction):
         '''
         Moves the character to a room in this direction
         '''
         next_room = self.rooms.go(self.character.room, direction)
         if not next_room:
-            print('You cannot go %s' % direction)
+            self.print('You cannot go %s' % direction)
         else:
-            old_room = self.character.room
-            self.character.room = next_room
+            result = None
             for room in self.character.room_enter_callbacks:
                 if room == next_room:
-                    self.character.room_enter_callbacks[room]()
+                    result = self.exec_reaction(self.character.room_enter_callbacks[room])
                     break;
+
+            if result and result.message:
+                self.print(result.message)
+            if result and not result.succeed:
+                return
+            
             for room in self.character.room_exit_callbacks:
-                if room == next_room:
-                    self.character.room_exit_callbacks[room]()
+                if room == self.character.room:
+                    result = self.exec_reaction(self.character.room_exit_callbacks[room])
                     break;
+
+            if result and result.message:
+                self.print(result.message)
+                self.silence = result.silence                
+            if not result or result.succeed:
+                self.character.room = next_room
                 self.print_room()
 
+            self.visited_rooms.add(self.character.room)
+            
+            self.silence = False
+
     def exec(self, string):
+        self.silence = False
+        fail = False
+
         room = self.rooms.get(self.character.room)
         
         tokens = re.split('\s+', string.strip())
@@ -245,54 +369,83 @@ class Game:
         
         direction = self.directions.eat(tokens)
 
-        notified, succeed = self.objects.notify(action, source_object, target_object)
+        notified, reaction_result = self.objects.notify(action, source_object, target_object)
 
+        if reaction_result:
+            if reaction_result.succeed == False and not reaction_result.message:
+                fail = True # pretend we don't know the command if not given message and told to fail
+            elif reaction_result.message:
+                self.print(reaction_result.message)
+                self.silence = reaction_result.silence                
+            elif not reaction_result.succeed:
+                return
+            
         # still allow for callbacks if it doesn't have the action
-        if source_object and action not in source_object.actions:
+        if not notified and source_object and action not in source_object.actions:
+            self.print('You can\'t %s at that.' % action)
             return
         
-        if not succeed:
-            return
-        
-        if action == self.go_action_name:
+        if tokens:
+            self.print('I don\'t understand')
+        elif fail:
+            self.print('That didn\'t work.')
+        elif action == 'use':
+            if not source_object:
+                print('Use what?')                
+            elif not target_object:
+                print('Use %s on what?' % source_object)
+            else:
+                if source_object.name not in self.character.inventory:
+                    print('You don\'t have a %s' % source_object)
+                else:
+                    print('You use the %s on the %s' % (source_object, target_object))
+
+        elif action == self.go_action_name:
             if not direction:
-                print('You must give a valid direction to go')
+                self.print('You must give a valid direction to go')
             else:
                 self.go(direction)
         elif action == self.look_action_name:
             if not source_object:
                 self.print_room()
             else:
-                print(source_object.description)
+                self.print(source_object.description)
         elif action == self.take_action_name:
-            if source_object.name in room.objects:
-                self.character.inventory.append(source_object.name)
-                print('You pick up the %s.' % source_object.name)
-                room.objects.remove(source_object.name)
+            if not source_object:
+                self.print('Take what?')
+            elif source_object.name in room.objects:
+                if self.character.add_to_inventory(source_object.name):
+                    room.objects.remove(source_object.name)
+            else:
+                self.print('There is no %s in here.' % source_object)
+        elif action == 'drop':
+            if source_object:
+                room.objects.append(source_object.name)
+                self.character.inventory.remove(source_object.name)
         elif action == 'inventory':
             if self.character.inventory:
-                print('You have ' + ', '.join(map(lambda x: 'a ' + x, self.character.inventory)) + '.')
+                self.print('You have ' + ', '.join(map(lambda x: 'a ' + x, self.character.inventory)) + '.')
             else:
-                print('Your inventory is empty.')
+                self.print('Your inventory is empty.')
         elif not notified:
-            print('I don\'t understand')
+            self.print('I don\'t understand')
 
     def print_room(self):
         room = self.rooms.get(self.character.room)
-        print(room.name.title())
-        print('\t', room.description)
+        self.print(room.name.title())
+        self.print('\t', room.description)
         adjacent_rooms = self.rooms.get_adjacent_rooms(self.character.room)
 
-        print()        
+        self.print()        
         for direction in adjacent_rooms:
-            print('%s is to the %s.' % (adjacent_rooms[direction].title(), direction))
+            self.print('%s is to the %s.' % (adjacent_rooms[direction].title(), direction))
 
         if room.objects:
-            objects = room.objects.copy()
+            objects = sorted(room.objects.copy())
             if len(objects) > 1:
                 objects.insert(-1, 'and')
                 
-            print('There is a %s here.' % ', '.join(objects))
+            self.print('There is a %s here.' % ', '.join(objects))
             
 class Room:
     def __init__(self, name, description='', objects=None):
