@@ -24,7 +24,7 @@ game.configure_actions() \
     .action('use', 'u') \
     .action('eat', 'consume') \
     .action('drop', 'd') \
-    .action('pee on', progn(side_effects.add_to_inventory(), succeed('You eat it')))
+    .action('destroy', 'break', progn(side_effects.destroy(), succeed('')))
 
 #    .on('take', lambda state: inv.append(state.object))
 

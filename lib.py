@@ -299,12 +299,6 @@ class Game:
                 return source
             else:
                 return input
-            
-        side_effects = {
-            'add_to_inventory': lambda obj: self.character.add_to_inventory(default_to_source(obj), force=True),
-            'remove_from_inventory': lambda obj: self.character.inventory.remove(default_to_source(obj))
-        }
-        
         if type(reaction) == Cond:
             was_true = False
             if type(reaction.condition) == Predicate:
@@ -315,10 +309,8 @@ class Game:
                 return self.exec_reaction(reaction.then_part, source_object, target_object)
             else:
                 return self.exec_reaction(reaction.else_part, source_object, target_object)
-        if type(reaction) == SideEffect:
-            if reaction.name not in side_effects:
-                raise Exception('Unknown side effect %s' % reaction.name)
-            side_effects[reaction.name](*reaction.args)
+        if isinstance(reaction, SideEffect):
+            reaction.call(self, source, target)
         elif type(reaction) == Progn:
             last_result = None
             for statement in reaction.statements:
