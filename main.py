@@ -2,8 +2,6 @@ from lib import *
 import side_effects
 import predicates
 
-inv = []
-
 game = Game()
 game.configure_directions() \
     .direction('east', 'e') \
@@ -24,23 +22,25 @@ game.configure_actions() \
     .action('use', 'u') \
     .action('eat', 'consume') \
     .action('drop', 'd') \
-    .action('destroy', 'break', progn(side_effects.destroy(), succeed('')))
-
-#    .on('take', lambda state: inv.append(state.object))
+    .action('destroy', 'break', progn(side_effects.destroy(), succeed()))
 
 game.configure_objects() \
     .object('key', 'A dirty, dirty key', ['look', 'take', 'use']) \
     .object('towel', 'A stained towel.', ['look', 'take', 'drop']) \
     .object('car', 'A big red van', ['look']) \
-    .on('key', 'eat', cond(predicates.has_visited('bathroom'), progn(side_effects.remove_from_inventory('key'), succeed('Yum')), fail())) \
-    .on_use('key', 'car', progn(side_effects.add_to_inventory('banana'))) \
+    .on('key', 'eat', cond(
+         predicates.has_visited('bathroom'),
+         progn(
+              side_effects.remove_from_inventory(),
+              succeed('Yum')),
+         fail())) \
+    .on_use('key', 'towel', progn(side_effects.add_to_inventory('taco'), succeed('Nice!'))) \
     .on('car', 'take', cond(predicates.inventory_has('forklift'),
                             succeed('You use your forklift to take the car'),
                             fail('You try to stuff the car into your inventory, but it\'s too heavy.'))) \
     .on('towel', 'drop', cond(predicates.in_room('living room'),
                               fail('You can\'t drop that in the living room'),
                               succeed()))
-
 
 game.configure_rooms() \
     .room('bathroom', 'A well kept bathroom.', [
@@ -65,4 +65,4 @@ game.configure_character() \
 
 if __name__ == '__main__':
      while True:
-          game.exec(input('> '))
+          game.execute(input('> '))

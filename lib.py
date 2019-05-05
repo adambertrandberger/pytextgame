@@ -100,8 +100,12 @@ class Objects:
         self.game = game
         self.use_callbacks = {}
 
-    def on_use(self, source, target, reaction):
+    def on_use(self, source, target, reaction, bidirectional=True):
         self.use_callbacks[source + target] = reaction
+
+        if bidirectional:
+            self.use_callbacks[target + source] = reaction
+            
         return self
     
     def object(self, name, description, actions):
@@ -239,7 +243,6 @@ def succeed(message='', silence=True):
     '''
     return Result(True, message, silence)
 
-            
 class Game:
     def __init__(self):
         self.rooms = Rooms(self)
@@ -359,9 +362,9 @@ class Game:
             
             self.silence = False
 
-    def exec(self, string):
+    def execute(self, string):
         self.silence = False
-        fail = False
+        failed = False
 
         room = self.rooms.get(self.character.room)
         
@@ -380,46 +383,48 @@ class Game:
 
         notified, reaction_result = self.objects.notify(action, source_object, target_object)
 
-        if reaction_result:
-            if reaction_result.succeed == False and not reaction_result.message:
-                fail = True # pretend we don't know the command if not given message and told to fail
-            elif reaction_result.message:
-                self.print(reaction_result.message)
-                self.silence = reaction_result.silence                
-            elif not reaction_result.succeed:
-                return
-
         if tokens:
+            failed = True
             self.print('I don\'t understand')
         elif reaction_result and not reaction_result.succeed:
-            if not reaction_result.message:
-                self.print('That didn\'t work.')
-            else:
-                self.print(reaction_result.message)
+            # for interrupting normal actions
+            pass
         elif self.actions.has_reaction(action): # if the action has a custom reaction
             result = self.exec_reaction(self.actions.reactions[action], source_object, target_object)
             if result:
-                if result.message:
-                    self.print(result.message)
                 if not result.succeed and not result.message:
+                    failed = True
                     self.print('That didn\'t work.')
         # still allow for callbacks if it doesn't have the action
         elif not notified and source_object and action not in source_object.actions:
-            self.print('You can\'t %s at that.' % action)
-            return
+            if source_object.name not in self.rooms.get(self.character.room).objects and source_object.name not in self.character.inventory:
+                self.print('I don\'t see a %s anywhere.' % source_object)
+            else:
+                self.print('You can\'t %s that.' % action)
+                
+            failed = True
         elif action == 'use':
             if not source_object:
-                print('Use what?')                
+                failed = True
+                print('Use what?')
             elif not target_object:
+                failed = True
                 print('Use %s on what?' % source_object)
             else:
                 if source_object.name not in self.character.inventory:
+                    failed = True
                     print('You don\'t have a %s' % source_object)
                 else:
-                    print('You use the %s on the %s' % (source_object, target_object))
-
+                    message = 'You use the %s on the %s' % (source_object, target_object)
+                    if reaction_result:
+                        if not reaction_result.succeed:
+                            failed = True
+                            print('That didn\'t work.')
+                    else:
+                        print('Nothing happens.')
         elif action == self.go_action_name:
             if not direction:
+                failed = True
                 self.print('You must give a valid direction to go')
             else:
                 self.go(direction)
@@ -436,20 +441,33 @@ class Game:
                     print('You pick up the %s.' % source_object)
                     room.objects.remove(source_object.name)
                 else:
+                    failed = True
                     print('Your inventory is out of room.')
             else:
+                failed = True
                 self.print('There is no %s in here.' % source_object)
         elif action == 'drop':
-            if source_object:
+            if source_object and source_object.name in self.character.inventory:
                 room.objects.append(source_object.name)
                 self.character.inventory.remove(source_object.name)
+            else:
+                print('You don\'t have a %s.' % source_object)
+                failed = True
         elif action == 'inventory':
             if self.character.inventory:
                 self.print('You have ' + ', '.join(map(lambda x: 'a ' + x, self.character.inventory)) + '.')
             else:
                 self.print('Your inventory is empty.')
         elif not notified:
+            failed = True
             self.print('I don\'t understand')
+
+        if reaction_result:
+            if not failed and reaction_result and reaction_result.message:
+                print(reaction_result.message)
+            elif not reaction_result.succeed and not reaction_result.message:
+                print('That didn\'t work.')
+            
 
     def print_room(self):
         room = self.rooms.get(self.character.room)
